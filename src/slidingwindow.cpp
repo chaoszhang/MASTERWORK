@@ -14,13 +14,8 @@
 
 using namespace std;
 
-class MasterSiteQuadrupartitionOneHotScorer{
+template<typename FreqType, typename EqFreqType, typename ScoreType, typename CounterType> class MasterSiteQuadrupartitionScorer{
 public:
-    typedef bool FreqType;
-    typedef double EqFreqType;
-    typedef double ScoreType;
-    typedef bool CounterType;
-
     struct DataType{
         array<vector<FreqType>, 4> cnt0, cnt1, cnt2, cnt3;
         array<EqFreqType, 4> pi;
@@ -79,8 +74,11 @@ public:
     }
 };
 
-MasterSiteQuadrupartitionOneHotScorer::DataType parseSubstring(const string &s1, const string &s2, const string &s3, const string &s4, int start, int end){
-    MasterSiteQuadrupartitionOneHotScorer::DataType res;
+typedef MasterSiteQuadrupartitionScorer<bool, double, double, bool> MasterSiteQuartetOneHotScorer;
+typedef MasterSiteQuadrupartitionScorer<unsigned char, double, double, int> MasterSiteSmallCountQuadrupartitionScorer;
+
+MasterSiteQuartetOneHotScorer::DataType parseSubstring(const string &s1, const string &s2, const string &s3, const string &s4, int start, int end){
+    MasterSiteQuartetOneHotScorer::DataType res;
     array<const string*, 4> lst = {&s1, &s2, &s3, &s4};
     array<array<vector<bool>, 4>*, 4> cntlst = {&res.cnt0, &res.cnt1, &res.cnt2, &res.cnt3};
     for (int i = 0; i < 4; i++){
@@ -99,10 +97,30 @@ MasterSiteQuadrupartitionOneHotScorer::DataType parseSubstring(const string &s1,
     return res;
 }
 
-int main(int argc, char *argv[])
+MasterSiteSmallCountQuadrupartitionScorer::DataType parseSubstring(const array<vector<unsigned char>, 4> &f1, const array<vector<unsigned char>, 4> &f2, 
+        const array<vector<unsigned char>, 4> &f3, const array<vector<unsigned char>, 4> &f4, int start, int end){
+    MasterSiteSmallCountQuadrupartitionScorer::DataType res;
+    array<const array<vector<unsigned char>, 4>*, 4> lst = {&f1, &f2, &f3, &f4};
+    array<array<vector<unsigned char>, 4>*, 4> cntlst = {&res.cnt0, &res.cnt1, &res.cnt2, &res.cnt3};
+    for (int i = 0; i < 4; i++){
+        const array<vector<unsigned char>, 4> &f = *(lst[i]);
+        array<vector<unsigned char>, 4> &cnt = *(cntlst[i]);
+        for (int k = 0; k < 4; k++) {
+            for (int j = start; j < end; j++){
+                cnt[k].push_back(f[k][j]);
+                res.pi[k] += f[k][j];
+            }
+        }
+    }
+    double sum = res.pi[0] + res.pi[1] + res.pi[2] + res.pi[3];
+    for (int k = 0; k < 4; k++) res.pi[k] /= sum;
+    return res;
+}
+
+int onehot(int argc, char *argv[])
 {
-    int windowSize = 1000;
-    int intervalSize = 10000;
+    int windowSize = 10;
+    int intervalSize = 20;
     
     ifstream fin(argv[1]);
     ofstream fout(argv[2]);
@@ -116,15 +134,69 @@ int main(int argc, char *argv[])
     fin >> name4 >> s4;
     fout << "pos" << "\t" << name1 << "\t" << name2 << "\t" << name3 << "\t" << name1 << "\t" << name2 << "\t" << name3 << endl;
     for (int pos = 0; pos + intervalSize <= L; pos += intervalSize){
-        MasterSiteQuadrupartitionOneHotScorer::DataType data = parseSubstring(s1, s2, s3, s4, pos, pos + intervalSize);
-        vector<double> topology1 = MasterSiteQuadrupartitionOneHotScorer::slidingWindow(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2, data.pi);
-        vector<double> topology2 = MasterSiteQuadrupartitionOneHotScorer::slidingWindow(windowSize, data.cnt1, data.cnt3, data.cnt0, data.cnt2, data.pi);
-        vector<double> topology3 = MasterSiteQuadrupartitionOneHotScorer::slidingWindow(windowSize, data.cnt2, data.cnt3, data.cnt0, data.cnt1, data.pi);
+        MasterSiteQuartetOneHotScorer::DataType data = parseSubstring(s1, s2, s3, s4, pos, pos + intervalSize);
+        vector<double> topology1 = MasterSiteQuartetOneHotScorer::slidingWindow(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2, data.pi);
+        vector<double> topology2 = MasterSiteQuartetOneHotScorer::slidingWindow(windowSize, data.cnt1, data.cnt3, data.cnt0, data.cnt2, data.pi);
+        vector<double> topology3 = MasterSiteQuartetOneHotScorer::slidingWindow(windowSize, data.cnt2, data.cnt3, data.cnt0, data.cnt1, data.pi);
         for (int i = 0; i < topology1.size(); i++){
             double total = topology1[i] + topology2[i] + topology3[i];
-            fout << pos + i * windowSize << "\t" << topology1[i] << "\t" << topology2[i] << "\t" << topology3[i] << "\t" <<\
+            fout << pos + i * windowSize << "\t" << topology1[i] << "\t" << topology2[i] << "\t" << topology3[i] << "\t" <<
                 topology1[i] / total << "\t" << topology2[i] / total << "\t" << topology3[i] / total << endl;
         }
     }
+    return 0;
+}
+
+int multiind(int argc, char *argv[])
+{
+    int windowSize = 5;
+    int intervalSize = 20;
+    string name[4];
+    unordered_map<string, int> name2id;
+    ifstream fin(argv[1]);
+    ofstream fout(argv[2]);
+    string line;
+    int id, pos;
+    array<array<vector<unsigned char>, 4>, 4> freq;
+    while (getline(fin, line)){
+        if (line[0] == '>'){
+            if (name2id.count(line.substr(1))) id = name2id[line.substr(1)];
+            else {
+                id = name2id.size();
+                name[id] = line.substr(1);
+                name2id[line.substr(1)] = id;
+            }
+            pos = 0;
+        }
+        else{
+            for (int j = 0; j < line.size(); j++){
+                for (int k = 0; k < 4; k++){
+                    if (pos + j >= freq[id][k].size()) freq[id][k].push_back(0); 
+                }
+                freq[id][0][pos + j] += (line[j] == 'A' || line[j] == 'a');
+                freq[id][1][pos + j] += (line[j] == 'C' || line[j] == 'c');
+                freq[id][2][pos + j] += (line[j] == 'G' || line[j] == 'g');
+                freq[id][3][pos + j] += (line[j] == 'T' || line[j] == 't'); 
+            }
+            pos += line.size();
+        }
+    }
+    fout << "pos" << "\t" << name[0] << "\t" << name[1] << "\t" << name[2] << endl;
+    for (int pos = 0; pos + intervalSize <= freq[0][0].size(); pos += intervalSize){
+        MasterSiteSmallCountQuadrupartitionScorer::DataType data = parseSubstring(freq[0], freq[1], freq[2], freq[3], pos, pos + intervalSize);
+        vector<double> topology1 = MasterSiteSmallCountQuadrupartitionScorer::slidingWindow(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2, data.pi);
+        vector<double> topology2 = MasterSiteSmallCountQuadrupartitionScorer::slidingWindow(windowSize, data.cnt1, data.cnt3, data.cnt0, data.cnt2, data.pi);
+        vector<double> topology3 = MasterSiteSmallCountQuadrupartitionScorer::slidingWindow(windowSize, data.cnt2, data.cnt3, data.cnt0, data.cnt1, data.pi);
+        for (int i = 0; i < topology1.size(); i++){
+            fout << pos + i * windowSize << "\t" << topology1[i] << "\t" << topology2[i] << "\t" << topology3[i] << endl;
+        }
+    }
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    //onehot(argc, argv);
+    multiind(argc, argv);
     return 0;
 }
