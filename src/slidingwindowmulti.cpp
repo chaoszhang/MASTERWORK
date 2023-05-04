@@ -196,8 +196,8 @@ int multiind(int argc, char *argv[])
 
 int multiind(string input, string output, string mapping)
 {
-    int windowSize = 1000000;
-    int intervalSize = 10000;
+    int windowSize = 10000;
+    int intervalSize = 1000000;
     string name[4];
     unordered_map<string, int> name2id;
     {
