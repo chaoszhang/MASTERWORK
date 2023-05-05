@@ -113,7 +113,7 @@ MasterSiteSmallCountQuadrupartitionScorer::DataType parseFreqs(const array<vecto
         }
     }
     double sum = res.pi[0] + res.pi[1] + res.pi[2] + res.pi[3];
-    for (int k = 0; k < 4; k++) res.pi[k] /= sum;
+    for (int k = 0; k < 4; k++) res.pi[k] = (sum == 0) ? 0 : res.pi[k] / sum;
     return res;
 }
 
