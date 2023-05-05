@@ -2,6 +2,7 @@
 
 #include<iostream>
 #include<fstream>
+#include<sstream>
 #include<unordered_map>
 #include<unordered_set>
 #include<cstdio>
@@ -214,7 +215,7 @@ int multiind(string input, string output, string mapping)
         }
     }
     ifstream fin(input);
-    ofstream fout(output);
+    ostringstream fout;
     string line;
     int id, pos;
     array<array<vector<unsigned char>, 4>, 4> freq;
@@ -250,6 +251,8 @@ int multiind(string input, string output, string mapping)
         }
         fout << pos << "\t" << total1 << "\t" << total2 << "\t" << total3 << endl;
     }
+    ofstream realfout(output);
+    realfout << fout.str();
     return 0;
 }
 
