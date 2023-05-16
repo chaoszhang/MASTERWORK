@@ -234,6 +234,7 @@ template<typename FreqType = unsigned short, typename Scorer = MasterSiteNormalQ
 
 int main(int argc, char *argv[])
 {
-    cout << argv[1] << "\t" << multiind<>(argv[1], argv[2], 1000, 1000, false);
+    string s = multiind<>(argv[1], argv[2], 1000, 1000, false);
+    cout << argv[1] << "\t" << s;
     return 0;
 }
