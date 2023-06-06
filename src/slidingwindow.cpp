@@ -19,7 +19,8 @@ template<typename FreqType = unsigned short, typename EqFreqType = double, typen
 public:
     struct DataType{
         array<vector<FreqType>, 4> cnt0, cnt1, cnt2, cnt3;
-        array<EqFreqType, 4> pi;
+        vector<array<EqFreqType, 4> > pi;
+		int windowSize;
     };
     
 private:
@@ -59,17 +60,17 @@ public:
         for (int i = start; i < end; i++) res += scoreSite(i, cnt0, cnt1, cnt2, cnt3, pi);
         return res;
     }
-
+	/*
     static ScoreType score(const array<vector<FreqType>, 4> &cnt0, const array<vector<FreqType>, 4> &cnt1,
             const array<vector<FreqType>, 4> &cnt2, const array<vector<FreqType>, 4> &cnt3, const array<EqFreqType, 4> &pi){
         return scoreInterval(0, cnt0[0].size(), cnt0, cnt1, cnt2, cnt3, pi);
     }
-
+	*/
     static vector<ScoreType> slidingWindow(int windowSize, const array<vector<FreqType>, 4> &cnt0, const array<vector<FreqType>, 4> &cnt1,
-            const array<vector<FreqType>, 4> &cnt2, const array<vector<FreqType>, 4> &cnt3, const array<EqFreqType, 4> &pi){
+            const array<vector<FreqType>, 4> &cnt2, const array<vector<FreqType>, 4> &cnt3, const vector<array<EqFreqType, 4> > &pi){
         vector<ScoreType> res;
         for (int i = 0; i + windowSize <= cnt0[0].size(); i += windowSize){
-            res.push_back(scoreInterval(i, i + windowSize, cnt0, cnt1, cnt2, cnt3, pi));
+            res.push_back(scoreInterval(i, i + windowSize, cnt0, cnt1, cnt2, cnt3, pi[i / windowSize]));
         }
         return res;
     }
@@ -79,6 +80,7 @@ typedef MasterSiteQuadrupartitionScorer<bool, double, double, bool> MasterSiteQu
 typedef MasterSiteQuadrupartitionScorer<unsigned char, double, double, int> MasterSiteSmallCountQuadrupartitionScorer;
 typedef MasterSiteQuadrupartitionScorer<unsigned short, double, double, long long> MasterSiteNormalQuadrupartitionScorer;
 
+/*
 MasterSiteQuartetOneHotScorer::DataType parseSubstring(const string &s1, const string &s2, const string &s3, const string &s4, int start, int end){
     MasterSiteQuartetOneHotScorer::DataType res;
     array<const string*, 4> lst = {&s1, &s2, &s3, &s4};
@@ -118,10 +120,13 @@ MasterSiteSmallCountQuadrupartitionScorer::DataType parseFreqs(const array<vecto
     for (int k = 0; k < 4; k++) res.pi[k] = (sum == 0) ? 0 : res.pi[k] / sum;
     return res;
 }
+*/
 
 MasterSiteNormalQuadrupartitionScorer::DataType parseFreqs(const array<vector<unsigned short>, 4> &f1, const array<vector<unsigned short>, 4> &f2, 
-        const array<vector<unsigned short>, 4> &f3, const array<vector<unsigned short>, 4> &f4, int start, int end){
+        const array<vector<unsigned short>, 4> &f3, const array<vector<unsigned short>, 4> &f4, int start, int end, int windowSize){
     MasterSiteNormalQuadrupartitionScorer::DataType res;
+	res.windowSize = windowSize;
+	res.pi.resize((end - start) / windowSize);
     array<const array<vector<unsigned short>, 4>*, 4> lst = {&f1, &f2, &f3, &f4};
     array<array<vector<unsigned short>, 4>*, 4> cntlst = {&res.cnt0, &res.cnt1, &res.cnt2, &res.cnt3};
     for (int i = 0; i < 4; i++){
@@ -130,43 +135,15 @@ MasterSiteNormalQuadrupartitionScorer::DataType parseFreqs(const array<vector<un
         for (int k = 0; k < 4; k++) {
             for (int j = start; j < end; j++){
                 cnt[k].push_back(f[k][j]);
-                res.pi[k] += f[k][j];
+                res.pi[(j - start) / windowSize][k] += f[k][j];
             }
         }
     }
-    double sum = res.pi[0] + res.pi[1] + res.pi[2] + res.pi[3];
-    for (int k = 0; k < 4; k++) res.pi[k] = (sum == 0) ? 0 : res.pi[k] / sum;
+	for (int i = 0; i < res.pi.size(); i++){
+		double sum = res.pi[i][0] + res.pi[i][1] + res.pi[i][2] + res.pi[i][3];
+		for (int k = 0; k < 4; k++) res.pi[i][k] = (sum == 0) ? 0 : res.pi[i][k] / sum;
+	}
     return res;
-}
-
-int onehot(int argc, char *argv[])
-{
-    int windowSize = 10;
-    int intervalSize = 20;
-    
-    ifstream fin(argv[1]);
-    ofstream fout(argv[2]);
-    int n, L;
-    string name1, name2, name3, name4;
-    string s1, s2, s3, s4;
-    fin >> n >> L;
-    fin >> name1 >> s1;
-    fin >> name2 >> s2;
-    fin >> name3 >> s3;
-    fin >> name4 >> s4;
-    fout << "pos" << "\t" << name1 << "\t" << name2 << "\t" << name3 << "\t" << name1 << "\t" << name2 << "\t" << name3 << endl;
-    for (int pos = 0; pos + intervalSize <= L; pos += intervalSize){
-        MasterSiteQuartetOneHotScorer::DataType data = parseSubstring(s1, s2, s3, s4, pos, pos + intervalSize);
-        vector<double> topology1 = MasterSiteQuartetOneHotScorer::slidingWindow(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2, data.pi);
-        vector<double> topology2 = MasterSiteQuartetOneHotScorer::slidingWindow(windowSize, data.cnt1, data.cnt3, data.cnt0, data.cnt2, data.pi);
-        vector<double> topology3 = MasterSiteQuartetOneHotScorer::slidingWindow(windowSize, data.cnt2, data.cnt3, data.cnt0, data.cnt1, data.pi);
-        for (int i = 0; i < topology1.size(); i++){
-            double total = topology1[i] + topology2[i] + topology3[i];
-            fout << pos + i * windowSize << "\t" << topology1[i] << "\t" << topology2[i] << "\t" << topology3[i] << "\t" <<
-                topology1[i] / total << "\t" << topology2[i] / total << "\t" << topology3[i] / total << endl;
-        }
-    }
-    return 0;
 }
 
 template<typename FreqType = unsigned short, typename Scorer = MasterSiteNormalQuadrupartitionScorer>
@@ -217,13 +194,13 @@ template<typename FreqType = unsigned short, typename Scorer = MasterSiteNormalQ
     }
     if (header) fout << "pos" << "\t" << name[1] << "+" << name[2] << "\t" << name[0] << "+" << name[2] << "\t" << name[0] << "+" << name[1] << endl;
     for (int pos = 0; pos + intervalSize <= freq[0][0].size(); pos += intervalSize){
-        typename Scorer::DataType data = parseFreqs(freq[0], freq[1], freq[2], freq[3], pos, pos + intervalSize);
+        typename Scorer::DataType data = parseFreqs(freq[0], freq[1], freq[2], freq[3], pos, pos + intervalSize, windowSize);
         vector<double> topology1 = Scorer::slidingWindow(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2, data.pi);
         vector<double> topology2 = Scorer::slidingWindow(windowSize, data.cnt1, data.cnt3, data.cnt0, data.cnt2, data.pi);
         vector<double> topology3 = Scorer::slidingWindow(windowSize, data.cnt2, data.cnt3, data.cnt0, data.cnt1, data.pi);
         double total1 = 0, total2 = 0, total3 = 0;
         for (int i = 0; i < topology1.size(); i++){
-            total1 += topology1[i];
+			total1 += topology1[i];
             total2 += topology2[i];
             total3 += topology3[i];
         }
@@ -237,7 +214,7 @@ slidingwindow FASTA_FILE [ MAPPING_FILE WINDOW_SIZE ]
 
 FASTA_FILE: input file, currently only supporting FASTA format
 MAPPING_FILE: a file mapping input sequences into four clusters or - (see format below, default: -)
-WINDOW_SIZE: must be a multiple of 1000 (default: 1000)
+WINDOW_SIZE: must be a multiple of 10000 (default: 10000)
 
 example:
 slidingwindow input.fasta - 1000000
@@ -268,7 +245,7 @@ int main(int argc, char *argv[])
 	string fasta = argv[1];
 	string mapping = (argc > 2) ? argv[2] : "-";
 	if (mapping == "-") mapping = "";
-	int size = (argc > 3) ? stoi(argv[3]) : 1000;
+	int size = (argc > 3) ? stoi(argv[3]) : 10000;
 	
     cout << multiind<>(fasta, mapping, size);
     return 0;
