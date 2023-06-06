@@ -2,6 +2,7 @@
 
 #include<iostream>
 #include<fstream>
+#include<sstream>
 #include<unordered_map>
 #include<unordered_set>
 #include<cstdio>
@@ -14,7 +15,7 @@
 
 using namespace std;
 
-template<typename FreqType, typename EqFreqType, typename ScoreType, typename CounterType> class MasterSiteQuadrupartitionScorer{
+template<typename FreqType = unsigned short, typename EqFreqType = double, typename ScoreType = double, typename CounterType = long long> class MasterSiteQuadrupartitionScorer{
 public:
     struct DataType{
         array<vector<FreqType>, 4> cnt0, cnt1, cnt2, cnt3;
@@ -76,6 +77,7 @@ public:
 
 typedef MasterSiteQuadrupartitionScorer<bool, double, double, bool> MasterSiteQuartetOneHotScorer;
 typedef MasterSiteQuadrupartitionScorer<unsigned char, double, double, int> MasterSiteSmallCountQuadrupartitionScorer;
+typedef MasterSiteQuadrupartitionScorer<unsigned short, double, double, long long> MasterSiteNormalQuadrupartitionScorer;
 
 MasterSiteQuartetOneHotScorer::DataType parseSubstring(const string &s1, const string &s2, const string &s3, const string &s4, int start, int end){
     MasterSiteQuartetOneHotScorer::DataType res;
@@ -97,7 +99,7 @@ MasterSiteQuartetOneHotScorer::DataType parseSubstring(const string &s1, const s
     return res;
 }
 
-MasterSiteSmallCountQuadrupartitionScorer::DataType parseSubstring(const array<vector<unsigned char>, 4> &f1, const array<vector<unsigned char>, 4> &f2, 
+MasterSiteSmallCountQuadrupartitionScorer::DataType parseFreqs(const array<vector<unsigned char>, 4> &f1, const array<vector<unsigned char>, 4> &f2, 
         const array<vector<unsigned char>, 4> &f3, const array<vector<unsigned char>, 4> &f4, int start, int end){
     MasterSiteSmallCountQuadrupartitionScorer::DataType res;
     array<const array<vector<unsigned char>, 4>*, 4> lst = {&f1, &f2, &f3, &f4};
@@ -113,7 +115,27 @@ MasterSiteSmallCountQuadrupartitionScorer::DataType parseSubstring(const array<v
         }
     }
     double sum = res.pi[0] + res.pi[1] + res.pi[2] + res.pi[3];
-    for (int k = 0; k < 4; k++) res.pi[k] /= sum;
+    for (int k = 0; k < 4; k++) res.pi[k] = (sum == 0) ? 0 : res.pi[k] / sum;
+    return res;
+}
+
+MasterSiteNormalQuadrupartitionScorer::DataType parseFreqs(const array<vector<unsigned short>, 4> &f1, const array<vector<unsigned short>, 4> &f2, 
+        const array<vector<unsigned short>, 4> &f3, const array<vector<unsigned short>, 4> &f4, int start, int end){
+    MasterSiteNormalQuadrupartitionScorer::DataType res;
+    array<const array<vector<unsigned short>, 4>*, 4> lst = {&f1, &f2, &f3, &f4};
+    array<array<vector<unsigned short>, 4>*, 4> cntlst = {&res.cnt0, &res.cnt1, &res.cnt2, &res.cnt3};
+    for (int i = 0; i < 4; i++){
+        const array<vector<unsigned short>, 4> &f = *(lst[i]);
+        array<vector<unsigned short>, 4> &cnt = *(cntlst[i]);
+        for (int k = 0; k < 4; k++) {
+            for (int j = start; j < end; j++){
+                cnt[k].push_back(f[k][j]);
+                res.pi[k] += f[k][j];
+            }
+        }
+    }
+    double sum = res.pi[0] + res.pi[1] + res.pi[2] + res.pi[3];
+    for (int k = 0; k < 4; k++) res.pi[k] = (sum == 0) ? 0 : res.pi[k] / sum;
     return res;
 }
 
@@ -147,25 +169,37 @@ int onehot(int argc, char *argv[])
     return 0;
 }
 
-int multiind(int argc, char *argv[])
+template<typename FreqType = unsigned short, typename Scorer = MasterSiteNormalQuadrupartitionScorer>
+    string multiind(string input, string mapping = "", int intervalSize = 1000000, int windowSize = 10000, bool header = true)
 {
-    int windowSize = 5;
-    int intervalSize = 20;
     string name[4];
     unordered_map<string, int> name2id;
-    ifstream fin(argv[1]);
-    ofstream fout(argv[2]);
+    unordered_map<string, int> realname2id;
+    if (mapping != ""){
+        ifstream fmap(mapping);
+        string idname, realname;
+        while(fmap >> idname){
+            fmap >> realname;
+            if (!realname2id.count(realname)) {
+                name[realname2id.size()] = realname;
+                realname2id[realname] = realname2id.size();
+            }
+            name2id[idname] = realname2id[realname];
+        }
+    }
+    ifstream fin(input);
+    ostringstream fout;
     string line;
     int id, pos;
-    array<array<vector<unsigned char>, 4>, 4> freq;
+    array<array<vector<FreqType>, 4>, 4> freq;
     while (getline(fin, line)){
         if (line[0] == '>'){
-            if (name2id.count(line.substr(1))) id = name2id[line.substr(1)];
-            else {
-                id = name2id.size();
-                name[id] = line.substr(1);
-                name2id[line.substr(1)] = id;
+            if (!name2id.count(line.substr(1))) {
+                name[realname2id.size()] = line.substr(1);
+                realname2id[line.substr(1)] = realname2id.size();
+                name2id[line.substr(1)] = realname2id[line.substr(1)];
             }
+            id = name2id[line.substr(1)];
             pos = 0;
         }
         else{
@@ -181,22 +215,61 @@ int multiind(int argc, char *argv[])
             pos += line.size();
         }
     }
-    fout << "pos" << "\t" << name[0] << "\t" << name[1] << "\t" << name[2] << endl;
+    if (header) fout << "pos" << "\t" << name[1] << "+" << name[2] << "\t" << name[0] << "+" << name[2] << "\t" << name[0] << "+" << name[1] << endl;
     for (int pos = 0; pos + intervalSize <= freq[0][0].size(); pos += intervalSize){
-        MasterSiteSmallCountQuadrupartitionScorer::DataType data = parseSubstring(freq[0], freq[1], freq[2], freq[3], pos, pos + intervalSize);
-        vector<double> topology1 = MasterSiteSmallCountQuadrupartitionScorer::slidingWindow(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2, data.pi);
-        vector<double> topology2 = MasterSiteSmallCountQuadrupartitionScorer::slidingWindow(windowSize, data.cnt1, data.cnt3, data.cnt0, data.cnt2, data.pi);
-        vector<double> topology3 = MasterSiteSmallCountQuadrupartitionScorer::slidingWindow(windowSize, data.cnt2, data.cnt3, data.cnt0, data.cnt1, data.pi);
+        typename Scorer::DataType data = parseFreqs(freq[0], freq[1], freq[2], freq[3], pos, pos + intervalSize);
+        vector<double> topology1 = Scorer::slidingWindow(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2, data.pi);
+        vector<double> topology2 = Scorer::slidingWindow(windowSize, data.cnt1, data.cnt3, data.cnt0, data.cnt2, data.pi);
+        vector<double> topology3 = Scorer::slidingWindow(windowSize, data.cnt2, data.cnt3, data.cnt0, data.cnt1, data.pi);
+        double total1 = 0, total2 = 0, total3 = 0;
         for (int i = 0; i < topology1.size(); i++){
-            fout << pos + i * windowSize << "\t" << topology1[i] << "\t" << topology2[i] << "\t" << topology3[i] << endl;
+            total1 += topology1[i];
+            total2 += topology2[i];
+            total3 += topology3[i];
         }
+        fout << pos << "\t" << total1 << "\t" << total2 << "\t" << total3 << endl;
     }
-    return 0;
+    return fout.str();
 }
+
+const string HELP = R"V0G0N(CASTER-site Sliding Window Tool
+slidingwindow FASTA_FILE [ MAPPING_FILE WINDOW_SIZE ]
+
+FASTA_FILE: input file, currently only supporting FASTA format
+MAPPING_FILE: a file mapping input sequences into four clusters or - (see format below, default: -)
+WINDOW_SIZE: must be a multiple of 1000 (default: 1000)
+
+example:
+slidingwindow input.fasta - 1000000
+slidingwindow input.fasta mapping.txt
+
+mapping file format (exactly four clusters):
+seq_name1	cluster_name1
+seq_name2	cluster_name2
+seq_name3	cluster_name3
+seq_name4	cluster_name4
+seq_name5	cluster_name4
+seq_name6	cluster_name4
+
+default mapping file format (-):
+seq_name1	seq_name1
+seq_name2	seq_name2
+seq_name3	seq_name3
+seq_name4	seq_name4
+)V0G0N";
 
 int main(int argc, char *argv[])
 {
-    //onehot(argc, argv);
-    multiind(argc, argv);
+	if (argc == 1 || argv[1][0] == '-'){
+		cerr << HELP;
+		return 0;
+	}
+	
+	string fasta = argv[1];
+	string mapping = (argc > 2) ? argv[2] : "-";
+	if (mapping == "-") mapping = "";
+	int size = (argc > 3) ? stoi(argv[3]) : 1000;
+	
+    cout << multiind<>(fasta, mapping, size);
     return 0;
 }
