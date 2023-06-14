@@ -74,6 +74,28 @@ public:
         }
         return res;
     }
+	
+	static ScoreType quartetCnt(int start, int end, const array<vector<FreqType>, 4> &cnt0, const array<vector<FreqType>, 4> &cnt1,
+            const array<vector<FreqType>, 4> &cnt2, const array<vector<FreqType>, 4> &cnt3){
+		ScoreType res = 0;
+        for (int i = start; i < end; i++){
+			ScoreType s0 = cnt0[0][i] + cnt0[1][i] + cnt0[2][i] + cnt0[3][i];
+			ScoreType s1 = cnt1[0][i] + cnt1[1][i] + cnt1[2][i] + cnt1[3][i];
+			ScoreType s2 = cnt2[0][i] + cnt2[1][i] + cnt2[2][i] + cnt2[3][i];
+			ScoreType s3 = cnt3[0][i] + cnt3[1][i] + cnt3[2][i] + cnt3[3][i];
+			res += s0 * s1 * s2 * s3;
+		}
+        return res;
+	}
+	
+	static vector<ScoreType> slidingWindowQuartetCnt(int windowSize, const array<vector<FreqType>, 4> &cnt0, const array<vector<FreqType>, 4> &cnt1,
+            const array<vector<FreqType>, 4> &cnt2, const array<vector<FreqType>, 4> &cnt3){
+        vector<ScoreType> res;
+        for (int i = 0; i + windowSize <= cnt0[0].size(); i += windowSize){
+            res.push_back(quartetCnt(i, i + windowSize, cnt0, cnt1, cnt2, cnt3));
+        }
+        return res;
+    }
 };
 
 typedef MasterSiteQuadrupartitionScorer<bool, double, double, bool> MasterSiteQuartetOneHotScorer;
@@ -192,19 +214,21 @@ template<typename FreqType = unsigned short, typename Scorer = MasterSiteNormalQ
             pos += line.size();
         }
     }
-    if (header) fout << "pos" << "\t" << name[1] << "+" << name[2] << "\t" << name[0] << "+" << name[2] << "\t" << name[0] << "+" << name[1] << endl;
+    if (header) fout << "pos" << "\t" << name[1] << "+" << name[2] << "\t" << name[0] << "+" << name[2] << "\t" << name[0] << "+" << name[1] << "\tQuartetCnt" << endl;
     for (int pos = 0; pos + intervalSize <= freq[0][0].size(); pos += intervalSize){
         typename Scorer::DataType data = parseFreqs(freq[0], freq[1], freq[2], freq[3], pos, pos + intervalSize, windowSize);
         vector<double> topology1 = Scorer::slidingWindow(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2, data.pi);
         vector<double> topology2 = Scorer::slidingWindow(windowSize, data.cnt1, data.cnt3, data.cnt0, data.cnt2, data.pi);
         vector<double> topology3 = Scorer::slidingWindow(windowSize, data.cnt2, data.cnt3, data.cnt0, data.cnt1, data.pi);
-        double total1 = 0, total2 = 0, total3 = 0;
+		vector<double> quartetCnt = Scorer::slidingWindowQuartetCnt(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2);
+        double total1 = 0, total2 = 0, total3 = 0, qcnt = 0;
         for (int i = 0; i < topology1.size(); i++){
 			total1 += topology1[i];
             total2 += topology2[i];
             total3 += topology3[i];
+			qcnt += quartetCnt[i];
         }
-        fout << pos << "\t" << total1 << "\t" << total2 << "\t" << total3 << endl;
+        fout << pos << "\t" << total1 << "\t" << total2 << "\t" << total3 << "\t" << qcnt << endl;
     }
     return fout.str();
 }
