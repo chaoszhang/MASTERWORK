@@ -69,8 +69,9 @@ public:
     static vector<ScoreType> slidingWindow(int windowSize, const array<vector<FreqType>, 4> &cnt0, const array<vector<FreqType>, 4> &cnt1,
             const array<vector<FreqType>, 4> &cnt2, const array<vector<FreqType>, 4> &cnt3, const vector<array<EqFreqType, 4> > &pi){
         vector<ScoreType> res;
-        for (int i = 0; i + windowSize <= cnt0[0].size(); i += windowSize){
-            res.push_back(scoreInterval(i, i + windowSize, cnt0, cnt1, cnt2, cnt3, pi[i / windowSize]));
+        for (int i = 0; i < cnt0[0].size(); i += windowSize){
+			int j = (i + windowSize < cnt0[0].size()) ? i + windowSize : cnt0[0].size();
+            res.push_back(scoreInterval(i, j, cnt0, cnt1, cnt2, cnt3, pi[i / windowSize]));
         }
         return res;
     }
@@ -91,8 +92,9 @@ public:
 	static vector<ScoreType> slidingWindowQuartetCnt(int windowSize, const array<vector<FreqType>, 4> &cnt0, const array<vector<FreqType>, 4> &cnt1,
             const array<vector<FreqType>, 4> &cnt2, const array<vector<FreqType>, 4> &cnt3){
         vector<ScoreType> res;
-        for (int i = 0; i + windowSize <= cnt0[0].size(); i += windowSize){
-            res.push_back(quartetCnt(i, i + windowSize, cnt0, cnt1, cnt2, cnt3));
+        for (int i = 0; i < cnt0[0].size(); i += windowSize){
+			int j = (i + windowSize < cnt0[0].size()) ? i + windowSize : cnt0[0].size();
+            res.push_back(quartetCnt(i, j, cnt0, cnt1, cnt2, cnt3));
         }
         return res;
     }
@@ -148,7 +150,7 @@ MasterSiteNormalQuadrupartitionScorer::DataType parseFreqs(const array<vector<un
         const array<vector<unsigned short>, 4> &f3, const array<vector<unsigned short>, 4> &f4, int start, int end, int windowSize){
     MasterSiteNormalQuadrupartitionScorer::DataType res;
 	res.windowSize = windowSize;
-	res.pi.resize((end - start) / windowSize);
+	res.pi.resize((end - start + windowSize - 1) / windowSize);
     array<const array<vector<unsigned short>, 4>*, 4> lst = {&f1, &f2, &f3, &f4};
     array<array<vector<unsigned short>, 4>*, 4> cntlst = {&res.cnt0, &res.cnt1, &res.cnt2, &res.cnt3};
     for (int i = 0; i < 4; i++){
@@ -163,7 +165,7 @@ MasterSiteNormalQuadrupartitionScorer::DataType parseFreqs(const array<vector<un
     }
 	for (int i = 0; i < res.pi.size(); i++){
 		double sum = res.pi[i][0] + res.pi[i][1] + res.pi[i][2] + res.pi[i][3];
-		for (int k = 0; k < 4; k++) res.pi[i][k] = (sum == 0) ? 0 : res.pi[i][k] / sum;
+		for (int k = 0; k < 4; k++) res.pi[i][k] = (sum == 0) ? 0.25 : res.pi[i][k] / sum;
 	}
     return res;
 }
@@ -180,8 +182,11 @@ template<typename FreqType = unsigned short, typename Scorer = MasterSiteNormalQ
         while(fmap >> idname){
             fmap >> realname;
             if (!realname2id.count(realname)) {
-                name[realname2id.size()] = realname;
-                realname2id[realname] = realname2id.size();
+				if (realname != "-"){
+					name[realname2id.size()] = realname;
+					realname2id[realname] = realname2id.size();
+				}
+				else realname2id[realname] = -1;
             }
             name2id[idname] = realname2id[realname];
         }
@@ -191,7 +196,7 @@ template<typename FreqType = unsigned short, typename Scorer = MasterSiteNormalQ
     string line;
     int id, pos;
     array<array<vector<FreqType>, 4>, 4> freq;
-    while (getline(fin, line)){
+	while (getline(fin, line)){
         if (line[0] == '>'){
             if (!name2id.count(line.substr(1))) {
                 name[realname2id.size()] = line.substr(1);
@@ -201,7 +206,7 @@ template<typename FreqType = unsigned short, typename Scorer = MasterSiteNormalQ
             id = name2id[line.substr(1)];
             pos = 0;
         }
-        else{
+        else if (id != -1){
             for (int j = 0; j < line.size(); j++){
                 for (int k = 0; k < 4; k++){
                     if (pos + j >= freq[id][k].size()) freq[id][k].push_back(0); 
@@ -214,11 +219,13 @@ template<typename FreqType = unsigned short, typename Scorer = MasterSiteNormalQ
             pos += line.size();
         }
     }
-    if (header) fout << "pos" << "\t" << name[1] << "+" << name[2] << "\t" << name[0] << "+" << name[2] << "\t" << name[0] << "+" << name[1] << "\tQuartetCnt" << endl;
-    for (int pos = 0; pos + intervalSize <= freq[0][0].size(); pos += intervalSize){
-        typename Scorer::DataType data = parseFreqs(freq[0], freq[1], freq[2], freq[3], pos, pos + intervalSize, windowSize);
+    if (header) fout << "file" << "\t" << "pos" << "\t" << name[1] << "+" << name[2] << "\t" << name[0] << "+" << name[2] << "\t" << name[0] << "+" << name[1] << "\tQuartetCnt" << endl;
+	else cerr << "file" << "\t" << "pos" << "\t" << name[1] << "+" << name[2] << "\t" << name[0] << "+" << name[2] << "\t" << name[0] << "+" << name[1] << "\tQuartetCnt" << endl;
+    for (int pos = 0; pos < freq[0][0].size(); pos += intervalSize){
+		int end = (pos + intervalSize < freq[0][0].size()) ? pos + intervalSize : freq[0][0].size();
+        typename Scorer::DataType data = parseFreqs(freq[0], freq[1], freq[2], freq[3], pos, end, windowSize);
         vector<double> topology1 = Scorer::slidingWindow(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2, data.pi);
-        vector<double> topology2 = Scorer::slidingWindow(windowSize, data.cnt1, data.cnt3, data.cnt0, data.cnt2, data.pi);
+		vector<double> topology2 = Scorer::slidingWindow(windowSize, data.cnt1, data.cnt3, data.cnt0, data.cnt2, data.pi);
         vector<double> topology3 = Scorer::slidingWindow(windowSize, data.cnt2, data.cnt3, data.cnt0, data.cnt1, data.pi);
 		vector<double> quartetCnt = Scorer::slidingWindowQuartetCnt(windowSize, data.cnt0, data.cnt3, data.cnt1, data.cnt2);
         double total1 = 0, total2 = 0, total3 = 0, qcnt = 0;
@@ -228,7 +235,7 @@ template<typename FreqType = unsigned short, typename Scorer = MasterSiteNormalQ
             total3 += topology3[i];
 			qcnt += quartetCnt[i];
         }
-        fout << pos << "\t" << total1 << "\t" << total2 << "\t" << total3 << "\t" << qcnt << endl;
+        fout << input << "\t" << pos << "\t" << total1 << "\t" << total2 << "\t" << total3 << "\t" << qcnt << endl;
     }
     return fout.str();
 }
